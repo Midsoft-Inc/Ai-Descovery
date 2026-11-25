@@ -1,0 +1,18 @@
+# One command runs the whole site: website + API + MongoDB
+#   1) copy .env.example to .env and fill in the Razorpay keys
+#   2) docker compose up --build   ->  http://localhost:3000
+services:
+  app:
+    build: .
+    ports: ["3000:3000"]
+    env_file: .env
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/midsoft
+    depends_on: [mongo]
+    restart: unless-stopped
+  mongo:
+    image: mongo:7
+    volumes: [mongo-data:/data/db]
+    restart: unless-stopped
+volumes:
+  mongo-data:
