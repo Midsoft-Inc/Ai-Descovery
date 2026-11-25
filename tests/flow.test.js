@@ -2,6 +2,7 @@
 process.env.MONGODB_URI = "mongodb://unused"; process.env.RAZORPAY_KEY_ID = "rzp_test_key"; process.env.RAZORPAY_KEY_SECRET = "keysecret";
 process.env.RAZORPAY_WEBHOOK_SECRET = "whsecret"; process.env.ADMIN_USER = "admin"; process.env.ADMIN_PASS = "pass:word";
 delete process.env.REGISTRATION_CLOSES; delete process.env.SMTP_HOST;
+require("mongoose").connect = async () => {};
 const assert = require("assert"), crypto = require("crypto"), path = require("path");
 const stub = (rel, exp) => { const p = require.resolve(rel.startsWith(".") ? path.join(__dirname, "..", rel) : rel); require.cache[p] = { id: p, filename: p, loaded: true, exports: exp }; };
 
@@ -32,7 +33,13 @@ const ok = (m) => console.log("  ✓ " + m);
 
   // pages
   for (const p of ["/", "/register", "/payment/abc", "/success/abc", "/health"]) assert.equal((await fetch(base + p)).status, 200);
-  assert.equal((await fetch(base + "/nope")).status, 404); ok("every page route answers (and 404 works)");
+  const shell = await (await fetch(base + "/register")).text(); assert.ok(shell.includes('id="root"'));           // the React app shell
+  const nope = await fetch(base + "/nope"); assert.equal(nope.status, 404); assert.ok((await nope.text()).includes('id="root"'));   // unknown URL: real 404 status, React "Page not found" screen
+  assert.equal((await post("/nope", {})).status, 404); assert.equal((await fetch(base + "/api/nope")).status, 404);
+  ok("every page route serves the React app (unknown URLs get a real 404)");
+  const js = shell.match(/\/assets\/[^"]+\.js/)[0], jr = await fetch(base + js);
+  assert.equal(jr.status, 200); assert.ok((jr.headers.get("content-type") || "").includes("javascript")); assert.equal((await fetch(base + "/assets/missing.js")).status, 404);
+  assert.equal((await fetch(base + "/logo.png")).status, 200); ok("built JS bundle and logo are served");
 
   // registration validation
   assert.equal((await post("/api/register", { fullName: "x" })).status, 400);
@@ -81,14 +88,12 @@ const ok = (m) => console.log("  ✓ " + m);
   process.env.REGISTRATION_CLOSES = "2020-01-01T00:00:00Z";
   assert.equal((await post("/api/register", person("Late", "late@example.com"))).status, 403); delete process.env.REGISTRATION_CLOSES; ok("registration window can be closed");
 
-  // Vercel handler (api/index.js)
-  const mongoose = require("mongoose"); mongoose.connect = async () => {};
+  // Vercel entry + safe behaviour when settings are missing
   const hs = require("http").createServer(require("../api/index.js")).listen(0); const hb = `http://127.0.0.1:${hs.address().port}`;
-  assert.equal((await fetch(hb + "/health")).status, 200);
-  assert.equal((await fetch(hb + "/api/registration/zzz")).status, 404);
-  const keep = process.env.ADMIN_PASS; delete process.env.ADMIN_PASS;
-  const miss = await fetch(hb + "/health"); assert.equal(miss.status, 503); assert.ok(!(await miss.text()).includes("ADMIN"));
-  process.env.ADMIN_PASS = keep; hs.close(); ok("Vercel handler works, and answers 503 safely when env vars are missing");
+  assert.equal((await fetch(hb + "/health")).status, 200); assert.equal((await fetch(hb + "/api/registration/zzz")).status, 404); hs.close();
+  const env = { ...process.env }; ["MONGODB_URI", "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET", "ADMIN_USER", "ADMIN_PASS"].forEach((k) => delete env[k]);
+  const out = require("child_process").execFileSync(process.execPath, ["-e", `const s=require("./server").listen(0);(async()=>{const b="http://127.0.0.1:"+s.address().port;const r=await fetch(b+"/api/registration/x");const t=await r.text();const h=await fetch(b+"/");console.log(r.status,h.status,t.includes("ADMIN")||t.includes("MONGODB"));s.close();})()`], { cwd: path.join(__dirname, ".."), env, encoding: "utf8" });
+  assert.equal(out.trim().split("\n").pop(), "503 200 false"); ok("with NO settings: pages still load (200), API answers 503 safely (no crash, nothing leaked)");
 
   srv.close(); console.log("\nALL TESTS PASSED");
 })().catch((e) => { console.error("\nTEST FAILED:", e); process.exit(1); });

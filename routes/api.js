@@ -8,7 +8,8 @@ const mail = require("../lib/mailer");
 const { FEE_PAISE, CURRENCY, PROGRAMME, CATEGORIES, TOPICS, CONTACT_EMAIL } = require("../config");
 const { wrap, str, safeEqual, hmac } = require("../lib/util");
 
-const rzp = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
+let rzp;   // created on first use, so the pages and server still start even if the keys are not set yet
+const getRzp = () => (rzp = rzp || new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET }));
 const router = express.Router();
 const limiter = (limit) => rateLimit({ windowMs: 60 * 60 * 1000, limit, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Too many attempts. Please try again later." } });
 const oneLine = (s) => s.replace(/[\r\n]+/g, " ");
@@ -60,7 +61,7 @@ router.post("/payment/create-order", wrap(async (req, res) => {
   if (reg.status === "paid") return res.status(409).json({ error: "Payment already completed.", redirect: `/success/${reg.token}` });
 
   if (!reg.razorpayOrderId) {
-    const order = await rzp.orders.create({
+    const order = await getRzp().orders.create({
       amount: FEE_PAISE, currency: CURRENCY, receipt: `reg_${reg._id}`,
       notes: { registrationId: String(reg._id), email: reg.email, programme: PROGRAMME },
     });
