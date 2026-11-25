@@ -81,5 +81,14 @@ const ok = (m) => console.log("  ✓ " + m);
   process.env.REGISTRATION_CLOSES = "2020-01-01T00:00:00Z";
   assert.equal((await post("/api/register", person("Late", "late@example.com"))).status, 403); delete process.env.REGISTRATION_CLOSES; ok("registration window can be closed");
 
+  // Vercel handler (api/index.js)
+  const mongoose = require("mongoose"); mongoose.connect = async () => {};
+  const hs = require("http").createServer(require("../api/index.js")).listen(0); const hb = `http://127.0.0.1:${hs.address().port}`;
+  assert.equal((await fetch(hb + "/health")).status, 200);
+  assert.equal((await fetch(hb + "/api/registration/zzz")).status, 404);
+  const keep = process.env.ADMIN_PASS; delete process.env.ADMIN_PASS;
+  const miss = await fetch(hb + "/health"); assert.equal(miss.status, 503); assert.ok(!(await miss.text()).includes("ADMIN"));
+  process.env.ADMIN_PASS = keep; hs.close(); ok("Vercel handler works, and answers 503 safely when env vars are missing");
+
   srv.close(); console.log("\nALL TESTS PASSED");
 })().catch((e) => { console.error("\nTEST FAILED:", e); process.exit(1); });

@@ -7,7 +7,7 @@ const rateLimit = require("express-rate-limit");
 
 const need = ["MONGODB_URI", "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET", "ADMIN_USER", "ADMIN_PASS"];
 const missing = need.filter((k) => !process.env[k]);
-if (missing.length) { console.error("Missing .env values:", missing.join(", ")); process.exit(1); }
+if (missing.length && require.main === module) { console.error("Missing .env values:", missing.join(", ")); process.exit(1); }
 
 const { router: api, webhook } = require("./routes/api");
 const isProd = process.env.NODE_ENV === "production";
@@ -34,7 +34,7 @@ app.post("/api/razorpay/webhook", express.raw({ type: "application/json", limit:
 app.use(express.json({ limit: "10kb" }));
 
 // ---- Each page has its own route ----
-const pages = path.join(__dirname, "pages");
+const pages = path.join(__dirname, "public");
 const page = (file) => (req, res) => res.sendFile(path.join(pages, file));
 app.get("/", page("index.html"));                  // landing
 app.get("/register", page("register.html"));       // step 1: details

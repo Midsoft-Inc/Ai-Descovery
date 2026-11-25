@@ -83,7 +83,7 @@ router.post("/payment/verify", wrap(async (req, res) => {
   if (!safeEqual(hmac(process.env.RAZORPAY_KEY_SECRET, `${orderId}|${paymentId}`), sig))
     return res.status(400).json({ error: "Payment verification failed." });
   const updated = await markPaid(orderId, paymentId);
-  if (updated) mail.sendConfirmation(updated);
+  if (updated) await mail.sendConfirmation(updated);
   res.json({ ok: true, redirect: `/success/${reg.token}` });
 }));
 
@@ -98,7 +98,7 @@ async function webhook(req, res) {
   if ((evt.event === "payment.captured" || evt.event === "order.paid") && pay && pay.order_id && pay.amount === FEE_PAISE && pay.currency === CURRENCY) {
     try {
       const updated = await markPaid(pay.order_id, pay.id);
-      if (updated) mail.sendConfirmation(updated);
+      if (updated) await mail.sendConfirmation(updated);
     } catch (e) { console.error(e); return res.sendStatus(500); }   // 500 makes Razorpay retry
   }
   res.sendStatus(200);
@@ -112,7 +112,7 @@ router.post("/contact", limiter(10), wrap(async (req, res) => {
   if (!/^\S+@\S+\.\S+$/.test(d.email)) return res.status(400).json({ error: "Please enter a valid email address." });
   if (!TOPICS.includes(d.topic)) return res.status(400).json({ error: "Please choose a valid topic." });
   await Contact.create(d);
-  mail.send({ to: process.env.CONTACT_TO || CONTACT_EMAIL, replyTo: d.email, subject: `[${d.topic}] Message from ${d.name}`, text: `${d.message}\n\n— ${d.name} <${d.email}>` });
+  await mail.send({ to: process.env.CONTACT_TO || CONTACT_EMAIL, replyTo: d.email, subject: `[${d.topic}] Message from ${d.name}`, text: `${d.message}\n\n— ${d.name} <${d.email}>` });
   res.status(201).json({ ok: true });
 }));
 
